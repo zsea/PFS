@@ -30,9 +30,18 @@ func (pki *PublicKeyInfo) GetMd5() string {
 	hash := md5.Sum(combined)
 	return hex.EncodeToString(hash[:])
 }
+func LoadPKIFromContent(content string) (*PublicKeyInfo, error) {
+	// 解析 OpenSSH 格式的公钥
+	publicKeyInfo, err := _parseOpenSSHPublicKey(content)
+	if err != nil {
+		return nil, err
+	}
+
+	return publicKeyInfo, nil
+}
 
 // LoadPublicKeyInfo 用于从 id_rsa.pub 文件中加载公钥信息
-func LoadUser(path *string) (*PublicKeyInfo, error) {
+func LoadPKIFromFile(path *string) (*PublicKeyInfo, error) {
 	var filePath string
 	// 如果 path 为 nil，则从用户目录读取
 	if path == nil {
@@ -54,7 +63,7 @@ func LoadUser(path *string) (*PublicKeyInfo, error) {
 	}
 
 	// 解析 OpenSSH 格式的公钥
-	publicKeyInfo, err := parseOpenSSHPublicKey(string(data))
+	publicKeyInfo, err := _parseOpenSSHPublicKey(string(data))
 	if err != nil {
 		return nil, err
 	}
@@ -63,7 +72,7 @@ func LoadUser(path *string) (*PublicKeyInfo, error) {
 }
 
 // parseOpenSSHPublicKey 解析 OpenSSH 格式的公钥
-func parseOpenSSHPublicKey(key string) (*PublicKeyInfo, error) {
+func _parseOpenSSHPublicKey(key string) (*PublicKeyInfo, error) {
 	// 去除首尾空白字符
 	key = strings.TrimSpace(key)
 
@@ -82,7 +91,7 @@ func parseOpenSSHPublicKey(key string) (*PublicKeyInfo, error) {
 
 	// 解析公钥
 	var rsaPubKey rsa.PublicKey
-	err = sshParsePublicKey(decodedKey, &rsaPubKey)
+	err = _sshParsePublicKey(decodedKey, &rsaPubKey)
 	if err != nil {
 		return nil, err
 	}
@@ -97,7 +106,7 @@ func parseOpenSSHPublicKey(key string) (*PublicKeyInfo, error) {
 }
 
 // sshParsePublicKey 解析 OpenSSH 格式的公钥数据
-func sshParsePublicKey(data []byte, rsaPubKey *rsa.PublicKey) error {
+func _sshParsePublicKey(data []byte, rsaPubKey *rsa.PublicKey) error {
 	// 解析公钥数据
 	var (
 		n   int
@@ -105,20 +114,20 @@ func sshParsePublicKey(data []byte, rsaPubKey *rsa.PublicKey) error {
 	)
 
 	// 读取字符串 "ssh-rsa"
-	_, n, err = readString(data, 0)
+	_, n, err = _readString(data, 0)
 	if err != nil {
 		return err
 	}
 
 	// 读取指数
-	eBytes, n, err := readBigInt(data, n)
+	eBytes, n, err := _readBigInt(data, n)
 	if err != nil {
 		return err
 	}
 	rsaPubKey.E = int(eBytes.Int64())
 
 	// 读取模数
-	nBytes, n, err := readBigInt(data, n)
+	nBytes, n, err := _readBigInt(data, n)
 	if err != nil {
 		return err
 	}
@@ -128,7 +137,7 @@ func sshParsePublicKey(data []byte, rsaPubKey *rsa.PublicKey) error {
 }
 
 // readString 读取一个字符串
-func readString(data []byte, offset int) (string, int, error) {
+func _readString(data []byte, offset int) (string, int, error) {
 	length := int(data[offset])<<24 | int(data[offset+1])<<16 | int(data[offset+2])<<8 | int(data[offset+3])
 	offset += 4
 	if offset+length > len(data) {
@@ -140,7 +149,7 @@ func readString(data []byte, offset int) (string, int, error) {
 }
 
 // readBigInt 读取一个大整数
-func readBigInt(data []byte, offset int) (*big.Int, int, error) {
+func _readBigInt(data []byte, offset int) (*big.Int, int, error) {
 	length := int(data[offset])<<24 | int(data[offset+1])<<16 | int(data[offset+2])<<8 | int(data[offset+3])
 	offset += 4
 	if offset+length > len(data) {
