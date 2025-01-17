@@ -15,6 +15,7 @@ import (
 
 func StartQuicService(addr string) error {
 
+	defer wg.Done()
 	listener, err := quic.ListenAddr(addr, _generateTLSConfig(), nil)
 	if err != nil {
 		return err
@@ -29,13 +30,14 @@ func StartQuicService(addr string) error {
 			logger.Infof("接受连接失败 %v", err)
 			continue
 		}
-
-		go _handleConnection(conn)
+		RunTask(func() { _handleConnection(conn) })
+		//go _handleConnection(conn)
 	}
 }
 
 // handleConnection 处理每个QUIC连接
 func _handleConnection(s quic.Connection) {
+	defer wg.Done()
 	logger.Infof("新连接: %s", s.RemoteAddr().String())
 
 	// 处理每个流
@@ -43,14 +45,17 @@ func _handleConnection(s quic.Connection) {
 		stream, err := s.AcceptStream(context.Background())
 		if err != nil {
 			logger.Infof("接受流失败: %v", err)
-			return
+			panic(err)
+			//return
 		}
-		go _handleStream(stream)
+		RunTask(func() { _handleStream(stream) })
+
 	}
 }
 
 // handleStream 处理每个QUIC流
 func _handleStream(stream quic.Stream) {
+	defer wg.Done()
 	defer stream.Close()
 
 	// 读取客户端发送的数据
