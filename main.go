@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"net/url"
 )
 
@@ -17,15 +18,20 @@ func main() {
 	var listen_arg string
 	var server_arg string
 	var isHelp bool
+	var showVersion bool
 	flag.StringVar(&listen_arg, "l", "", "监听方式")
 	flag.StringVar(&server_arg, "s", "", "服务端")
 	flag.BoolVar(&isHelp, "h", false, "查看帮助文档")
+	flag.BoolVar(&showVersion, "v", false, "显示版本信息")
 
 	flag.Parse()
 	LoggerInitialization()
 
 	if isHelp {
 		flag.PrintDefaults()
+		return
+	} else if showVersion {
+		fmt.Println(Version)
 		return
 	}
 

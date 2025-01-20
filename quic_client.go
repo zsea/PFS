@@ -4,40 +4,46 @@ import (
 	"context"
 	"crypto/tls"
 	"io"
+	"time"
 
 	quic "github.com/quic-go/quic-go"
 )
 
-func StartQuicClient(addr string) error {
+func _StartMainStream(conn quic.Connection) {
+	defer wg.Done()
+	stream, err := conn.OpenStreamSync(context.Background())
+	if err != nil {
+		panic(err)
+	}
+	defer stream.Close()
+	for {
+		message := "test"
+		logger.Debugf("Client: Sending '%s'", message)
+		_, err = stream.Write([]byte(message))
+		if err != nil {
+			panic(err)
+		}
+
+		buf := make([]byte, len(message))
+		_, err = io.ReadFull(stream, buf)
+		if err != nil {
+			panic(err)
+		}
+		logger.Debugf("Client: Got '%s'", buf)
+		time.Sleep(5*time.Second)
+	}
+}
+func StartQuicClient(addr string) {
 	defer wg.Done()
 	tlsConf := &tls.Config{
 		InsecureSkipVerify: true,
-		NextProtos:         []string{"quic-echo-example"},
+		NextProtos:         []string{"PFS"},
 	}
 	conn, err := quic.DialAddr(context.Background(), addr, tlsConf, nil)
 	if err != nil {
-		return err
+		panic(err)
+		
 	}
-	defer conn.CloseWithError(0, "")
+	RunTask(func() { _StartMainStream(conn) })
 	
-	stream, err := conn.OpenStreamSync(context.Background())
-	if err != nil {
-		return err
-	}
-	defer stream.Close()
-	message := "test"
-	logger.Debugf("Client: Sending '%s'", message)
-	_, err = stream.Write([]byte(message))
-	if err != nil {
-		return err
-	}
-
-	buf := make([]byte, len(message))
-	_, err = io.ReadFull(stream, buf)
-	if err != nil {
-		return err
-	}
-	logger.Debugf("Client: Got '%s'", buf)
-	select {}
-	return nil
 }

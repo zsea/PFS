@@ -1,8 +1,14 @@
 package main
 
-import "sync"
+import (
+	_ "embed"
+	"sync"
+)
 
 var wg sync.WaitGroup
+
+//go:embed version
+var Version string
 
 type Task func()
 
