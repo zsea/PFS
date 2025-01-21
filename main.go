@@ -36,6 +36,13 @@ func main() {
 	}
 
 	var err error
+	pki, err := LoadPKIFromFile(nil)
+	if err != nil {
+		panic(err)
+	}
+	LocalPKI = *pki
+	localUserId = pki.GetMd5()
+	logger.Infof("当前账号：%s", localUserId)
 	if len(listen_arg) > 0 {
 		listen, err = url.Parse(listen_arg)
 		if err != nil {

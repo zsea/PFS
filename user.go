@@ -16,6 +16,7 @@ import (
 type PublicKeyInfo struct {
 	Exponent int
 	Modulus  []byte
+	Origin   string
 }
 
 // GetMd5 计算 Exponent 和 Modulus 合并后的 MD5 值
@@ -100,6 +101,7 @@ func _parseOpenSSHPublicKey(key string) (*PublicKeyInfo, error) {
 	publicKeyInfo := &PublicKeyInfo{
 		Exponent: rsaPubKey.E,
 		Modulus:  rsaPubKey.N.Bytes(),
+		Origin:   key,
 	}
 
 	return publicKeyInfo, nil

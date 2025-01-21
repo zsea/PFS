@@ -6,6 +6,9 @@ import (
 )
 
 var wg sync.WaitGroup
+var Clients sync.Map
+var localUserId string
+var LocalPKI PublicKeyInfo
 
 //go:embed version
 var Version string
