@@ -6,8 +6,8 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
-	"io/ioutil"
 	"math/big"
+	"os"
 	"os/user"
 	"strings"
 )
@@ -42,23 +42,20 @@ func LoadPKIFromContent(content string) (*PublicKeyInfo, error) {
 }
 
 // LoadPublicKeyInfo 用于从 id_rsa.pub 文件中加载公钥信息
-func LoadPKIFromFile(path *string) (*PublicKeyInfo, error) {
-	var filePath string
+func LoadPKIFromFile(path string) (*PublicKeyInfo, error) {
+	filePath := path
 	// 如果 path 为 nil，则从用户目录读取
-	if path == nil {
+	if len(filePath) == 0 {
 		// 获取当前用户主目录
 		currentUser, err := user.Current()
 		if err != nil {
 			return nil, err
 		}
 		filePath = currentUser.HomeDir + "/.ssh/id_rsa.pub"
-	} else {
-		// 使用传入的路径
-		filePath = *path
 	}
-
+	logger.Info("公钥地址：" + filePath)
 	// 读取文件内容
-	data, err := ioutil.ReadFile(filePath)
+	data, err := os.ReadFile(filePath)
 	if err != nil {
 		return nil, err
 	}

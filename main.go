@@ -1,7 +1,6 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"net/url"
 )
@@ -12,23 +11,23 @@ var (
 	server *url.URL
 )
 
-// LoadPublicKey 用于加载 id_rsa.pub 文件
-
 func main() {
 	var listen_arg string
 	var server_arg string
+	var pub string
 	var isHelp bool
 	var showVersion bool
-	flag.StringVar(&listen_arg, "l", "", "监听方式")
-	flag.StringVar(&server_arg, "s", "", "服务端")
-	flag.BoolVar(&isHelp, "h", false, "查看帮助文档")
-	flag.BoolVar(&showVersion, "v", false, "显示版本信息")
+	Usages.AppendString(&listen_arg, "l", "listen", "", "监听方式")
+	Usages.AppendString(&server_arg, "s", "server", "", "服务端地址")
+	Usages.AppendString(&pub, "", "pub", "", "公钥文件地址")
+	Usages.AppendBool(&isHelp, "h", "help", false, "查看帮助文档")
+	Usages.AppendBool(&showVersion, "v", "version", false, "查看版本信息")
 
-	flag.Parse()
+	Usages.Parse()
 	LoggerInitialization()
 
 	if isHelp {
-		flag.PrintDefaults()
+		Usages.Usages()
 		return
 	} else if showVersion {
 		fmt.Println(Version)
@@ -36,7 +35,7 @@ func main() {
 	}
 
 	var err error
-	pki, err := LoadPKIFromFile(nil)
+	pki, err := LoadPKIFromFile(pub)
 	if err != nil {
 		panic(err)
 	}

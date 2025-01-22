@@ -5,8 +5,12 @@ import (
 	"sync"
 )
 
+type ConnectionPools struct {
+	Pool sync.Map
+}
+
 var wg sync.WaitGroup
-var Clients sync.Map
+var Clients ConnectionPools
 var localUserId string
 var LocalPKI PublicKeyInfo
 
