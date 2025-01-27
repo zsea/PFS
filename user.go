@@ -5,12 +5,106 @@ import (
 	"crypto/rsa"
 	"encoding/base64"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"math/big"
 	"os"
 	"os/user"
 	"strings"
+	"sync"
+
+	"github.com/quic-go/quic-go"
 )
+
+type UserStream struct {
+	Stream quic.Stream
+	Conn   quic.Connection
+}
+type UserConnection struct { //暂未使用
+	Conn    quic.Connection
+	Streams []UserStream
+}
+type User struct {
+	UID    string
+	PKI    PublicKeyInfo
+	Stream []UserStream
+}
+type Users struct {
+	Users sync.Map
+}
+
+func (u *Users) StoreWithUid(uid string, pki PublicKeyInfo, stream UserStream) error {
+
+	e, ok := u.Users.Load(uid)
+	if !ok {
+		u.Users.Store(uid, User{UID: uid, PKI: pki, Stream: []UserStream{stream}})
+	} else { //存在，则直接加入
+		uu := e.(User)
+		uu.Stream = append(uu.Stream, stream)
+	}
+	return nil
+}
+func (u *Users) StoreWithToken(token string, stream UserStream) (string, error) {
+	t, err := Tokens.LoadAndDelete(token)
+	if err != nil {
+		return "", err
+	}
+	err = u.StoreWithUid(t.pki.GetMd5(), t.pki, stream)
+	if err != nil {
+		return "", err
+	}
+	return t.pki.GetMd5(), nil
+}
+func (u *Users) Count() int {
+	count := 0
+
+	u.Users.Range(func(key, value interface{}) bool {
+		count++
+		return true // 继续遍历
+	})
+	return count
+}
+func (u *Users) Remove(uid string, conn quic.Connection) {
+	e, ok := u.Users.Load(uid)
+	if !ok {
+		return
+	}
+	uu := e.(User)
+	ss := []UserStream{}
+	for _, s := range uu.Stream {
+		if s.Conn.RemoteAddr().String() != conn.RemoteAddr().String() {
+			ss = append(ss, s)
+		}
+	}
+	uu.Stream = ss
+}
+
+type Token struct {
+	token    string
+	pki      PublicKeyInfo
+	cratedAt uint
+}
+type TokenStore sync.Map
+
+func (t *TokenStore) Add(token string, pki PublicKeyInfo) error {
+	m := (*sync.Map)(t)
+	if _, ok := m.Load(token); ok {
+		return errors.New("key is exists")
+	}
+	m.Store(token, Token{token: token, pki: pki, cratedAt: 0})
+	return nil
+}
+func (t *TokenStore) LoadAndDelete(token string) (*Token, error) {
+	m := (*sync.Map)(t)
+	if v, ok := m.LoadAndDelete(token); ok {
+		return v.(*Token), nil
+	}
+	return nil, errors.New("not found")
+}
+
+var Clients Users //
+var Servers Users //
+var Tokens TokenStore
 
 // PublicKeyInfo 用于存储公钥文件的指数和模数
 type PublicKeyInfo struct {

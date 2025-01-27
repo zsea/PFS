@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/hex"
 	"io"
 	"time"
 
@@ -19,7 +20,7 @@ func _Ping(ctx context.Context, stream quic.Stream) {
 		}
 	}
 }
-func _Authentication(stream quic.Stream, conn quic.Connection) (bool, string) {
+func _Authentication(stream quic.Stream, conn quic.Connection, stores *Users) (bool, string) {
 	// 读取客户端发送的数据
 	data := make([]byte, 3)
 	n, err := QuicStreamReadWithTimeout(stream, data, 10)
@@ -36,7 +37,17 @@ func _Authentication(stream quic.Stream, conn quic.Connection) (bool, string) {
 		defer conn.CloseWithError(0, "")
 		return false, ""
 	}
-	data = make([]byte, 1)
+	data = make([]byte, 1) //读取认证类型
+	_, err = QuicStreamReadWithTimeout(stream, data, 10)
+	if err != nil {
+		if err == io.EOF {
+			logger.Infof("客户端关闭连接：%s", conn.RemoteAddr().String())
+
+		}
+		defer conn.CloseWithError(0, "")
+		return false, ""
+	}
+
 	_, err = QuicStreamReadWithTimeout(stream, data, 10)
 	if err != nil {
 		if err == io.EOF {
@@ -47,60 +58,85 @@ func _Authentication(stream quic.Stream, conn quic.Connection) (bool, string) {
 		return false, ""
 	}
 	if data[0] != 0 {
-		//指令0，表示上报的是客户端的公钥信息
+		//指令0，认证指令
 		logger.Infof("对端指令不正确：%d", data[0])
 		defer conn.CloseWithError(0, "")
 		return false, ""
 	}
-	data = make([]byte, 2)
-	_, err = QuicStreamReadWithTimeout(stream, data, 10)
-	if err != nil {
-		if err == io.EOF {
-			logger.Infof("客户端关闭连接：%s", conn.RemoteAddr().String())
+	cType := ConnectionType(data[0])
+	if cType == CT_PKI {
 
-		}
-		defer conn.CloseWithError(0, "")
-		return false, ""
-	}
-	oLen := BytesToUint(data)
-	data = make([]byte, oLen)
-	_, err = QuicStreamReadWithTimeout(stream, data, 10)
-	if err != nil {
-		if err == io.EOF {
-			logger.Infof("客户端关闭连接：%s", conn.RemoteAddr().String())
+		data = make([]byte, 2)
+		_, err = QuicStreamReadWithTimeout(stream, data, 10)
+		if err != nil {
+			if err == io.EOF {
+				logger.Infof("客户端关闭连接：%s", conn.RemoteAddr().String())
 
+			}
+			defer conn.CloseWithError(0, "")
+			return false, ""
 		}
-		defer conn.CloseWithError(0, "")
-		return false, ""
+		oLen := BytesToUint(data)
+		data = make([]byte, oLen)
+		_, err = QuicStreamReadWithTimeout(stream, data, 10)
+		if err != nil {
+			if err == io.EOF {
+				logger.Infof("客户端关闭连接：%s", conn.RemoteAddr().String())
+
+			}
+			defer conn.CloseWithError(0, "")
+			return false, ""
+		}
+		pub := string(data)
+		pki, err := LoadPKIFromContent(pub)
+		if err != nil {
+			logger.Infof("公钥信息解析失败：%s", pub)
+			defer conn.CloseWithError(0, "")
+			return false, ""
+		}
+		uid := pki.GetMd5()
+
+		err = stores.StoreWithUid(uid, *pki, UserStream{Conn: conn, Stream: stream})
+		if err != nil {
+			logger.Infof("连接到账号 %s 错误", uid)
+			return false, uid
+		}
+		logger.Infof("uid:%s", uid)
+		logger.Infof("pub:%s", pki.Origin)
+		logger.Infof("当前连接数：%d", stores.Count())
+		return true, uid
+	} else if cType == CT_TOKEN {
+		data = make([]byte, 16)
+		_, err = QuicStreamReadWithTimeout(stream, data, 10)
+		if err != nil {
+			if err == io.EOF {
+				logger.Infof("客户端关闭连接：%s", conn.RemoteAddr().String())
+
+			}
+			defer conn.CloseWithError(0, "")
+			return false, ""
+		}
+		// 读取到Token，转换为GUID字符串
+		token := hex.EncodeToString(data)
+		uid, err := stores.StoreWithToken(token, UserStream{Conn: conn, Stream: stream})
+		if err != nil {
+			logger.Infof("客户端token验证失败:%s", conn.RemoteAddr().String())
+			defer conn.CloseWithError(0, "")
+			return false, ""
+		}
+		return true, uid
 	}
-	pub := string(data)
-	pki, err := LoadPKIFromContent(pub)
-	if err != nil {
-		logger.Infof("公钥信息解析失败：%s", pub)
-		defer conn.CloseWithError(0, "")
-		return false, ""
-	}
-	uid := pki.GetMd5()
-	conn_info := ConnectionInfo{
-		UID:     uid,
-		Conn:    conn,
-		PKI:     *pki,
-		Command: stream,
-	}
-	err = Clients.Store(uid, conn_info)
-	if err != nil {
-		logger.Infof("已连接到账号:%s", uid)
-		return false, uid
-	}
-	logger.Infof("uid:%s", uid)
-	logger.Infof("pub:%s", pki.Origin)
-	logger.Infof("当前连接数：%d", Clients.Count())
-	return true, uid
+	return false, ""
 }
-func _SendAuthentication(stream quic.Stream) {
+
+func _SendPKI(stream quic.Stream) {
 	//ctx, cancel := context.WithCancel(context.Background()) // 创建一个可取消的context
 	//defer cancel()
 	_, err := stream.Write([]byte("PFS"))
+	if err != nil {
+		panic(err)
+	}
+	_, err = stream.Write([]byte{0}) //发送连接类型
 	if err != nil {
 		panic(err)
 	}
@@ -127,15 +163,15 @@ func QuicMainStream(stream quic.Stream, conn quic.Connection, isServer bool) {
 
 	var uid string
 	if isServer {
-		success, _uid := _Authentication(stream, conn)
+		success, _uid := _Authentication(stream, conn, &Clients) //如果是服务器，则是用来接受连接的
 		if !success {
 			return
 		}
 		uid = _uid
-		_SendAuthentication(stream)
+		_SendPKI(stream)
 	} else {
-		_SendAuthentication(stream)
-		success, _uid := _Authentication(stream, conn)
+		_SendPKI(stream)
+		success, _uid := _Authentication(stream, conn, &Servers) //如果是客户端身份
 		if !success {
 			return
 		}
@@ -147,7 +183,7 @@ func QuicMainStream(stream quic.Stream, conn quic.Connection, isServer bool) {
 
 	defer func() {
 		logger.Infof("%s 已断开", conn.RemoteAddr().String())
-		Clients.Pool.Delete(uid)
+		Clients.Remove(uid, conn)
 		logger.Infof("当前连接数：%d", Clients.Count())
 	}()
 	for {
