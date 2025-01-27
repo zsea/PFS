@@ -12,6 +12,7 @@ import (
 	"os/user"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/quic-go/quic-go"
 )
@@ -82,7 +83,7 @@ func (u *Users) Remove(uid string, conn quic.Connection) {
 type Token struct {
 	token    string
 	pki      PublicKeyInfo
-	cratedAt uint
+	cratedAt int64
 }
 type TokenStore sync.Map
 
@@ -91,7 +92,7 @@ func (t *TokenStore) Add(token string, pki PublicKeyInfo) error {
 	if _, ok := m.Load(token); ok {
 		return errors.New("key is exists")
 	}
-	m.Store(token, Token{token: token, pki: pki, cratedAt: 0})
+	m.Store(token, Token{token: token, pki: pki, cratedAt: time.Now().Unix()})
 	return nil
 }
 func (t *TokenStore) LoadAndDelete(token string) (*Token, error) {
